@@ -23,6 +23,12 @@ POSITIVE_WORDS = [
     "chill",
     "relaxed",
     "amazing",
+    # Slang positives (added to fix the "sick"/"fire" breaker failure).
+    # NOTE: "sick" is risky — it's positive as slang ("that's sick!") but
+    # negative literally ("I feel sick"). Watch for that regression.
+    "fire",
+    "lit",
+    "sick",
 ]
 
 NEGATIVE_WORDS = [
@@ -50,6 +56,14 @@ SAMPLE_POSTS = [
     "This is fine",
     "So excited for the weekend",
     "I am not happy about this",
+    "Lowkey stressed but kind of proud of myself",
+    "I absolutely love getting stuck in traffic",
+    "no cap this is the best day ever :)",
+    "highkey not okay today :(",
+    "this song hits different 😂",
+    "idk lowkey sad but whatever",
+    "this meeting could've been an email 💀",
+    "kinda nervous kinda hyped for tomorrow 🥲",
 ]
 
 # Human labels for each post above.
@@ -65,6 +79,14 @@ TRUE_LABELS = [
     "neutral",   # "This is fine"
     "positive",  # "So excited for the weekend"
     "negative",  # "I am not happy about this"
+    "mixed",     # "Lowkey stressed but kind of proud of myself" — "stressed" (neg) + "proud" (pos) in one breath
+    "negative",  # "I absolutely love getting stuck in traffic" — sarcasm; "love" looks positive but means the opposite
+    "positive",  # "no cap this is the best day ever :)" — slang + ":)" + "best ever" all point positive
+    "negative",  # "highkey not okay today :(" — "not okay" + ":(" ; "okay" could fool a keyword model via negation
+    "positive",  # "this song hits different 😂" — "hits different" = strong praise; no dictionary keyword to match on
+    "mixed",     # "idk lowkey sad but whatever" — EDGE CASE: "sad" (neg) softened by dismissive "whatever"; could argue negative
+    "negative",  # "this meeting could've been an email 💀" — dry complaint; 💀 + no positive words
+    "mixed",     # "kinda nervous kinda hyped for tomorrow 🥲" — "nervous" (neg) and "hyped" (pos) held together
 ]
 
 # TODO: Add 5-10 more posts and labels.

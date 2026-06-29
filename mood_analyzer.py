@@ -9,6 +9,7 @@ This class starts with very simple logic:
   - Convert that score into a mood label
 """
 
+import string
 from typing import List, Dict, Tuple, Optional
 
 from dataset import POSITIVE_WORDS, NEGATIVE_WORDS
@@ -18,6 +19,19 @@ class MoodAnalyzer:
     """
     A very simple, rule based mood classifier.
     """
+
+    # Emoticons made of punctuation. We list them explicitly so preprocess
+    # keeps them intact instead of stripping the ":" and ")" as punctuation.
+    POSITIVE_EMOTICONS = {":)", ":-)", ":d", ";)", ":p"}
+    NEGATIVE_EMOTICONS = {":(", ":-(", ":'(", ":/"}
+
+    # Single-character emoji signals. Kept simple and explicit on purpose.
+    POSITIVE_EMOJI = {"😂", "🎉", "💪", "🌱", "🥰", "😊", "❤"}
+    NEGATIVE_EMOJI = {"😩", "💀", "😭", "😡", "😞"}
+
+    # Words that flip the meaning of the word right after them ("not happy").
+    NEGATIONS = {"not", "no", "never", "dont", "don't", "isnt", "isn't",
+                 "cant", "can't", "wasnt", "wasn't", "aint", "ain't"}
 
     def __init__(
         self,
@@ -51,11 +65,49 @@ class MoodAnalyzer:
           - Remove punctuation
           - Handle simple emojis separately (":)", ":-(", "🥲", "😂")
           - Normalize repeated characters ("soooo" -> "soo")
+
+        This version:
+          - lowercases and splits on whitespace
+          - keeps known emoticons (":)", ":(") as whole tokens
+          - peels emoji characters off into their own tokens
+          - strips surrounding punctuation from ordinary words
         """
         cleaned = text.strip().lower()
-        tokens = cleaned.split()
+        tokens: List[str] = []
+
+        for raw in cleaned.split():
+            # Keep emoticons exactly as-is; their punctuation IS the signal.
+            if raw in self.POSITIVE_EMOTICONS or raw in self.NEGATIVE_EMOTICONS:
+                tokens.append(raw)
+                continue
+
+            # Walk the characters, splitting emojis out as standalone tokens.
+            word_chars: List[str] = []
+            for ch in raw:
+                if self._is_emoji(ch):
+                    word = "".join(word_chars).strip(string.punctuation)
+                    if word:
+                        tokens.append(word)
+                    word_chars = []
+                    tokens.append(ch)
+                else:
+                    word_chars.append(ch)
+
+            word = "".join(word_chars).strip(string.punctuation)
+            if word:
+                tokens.append(word)
 
         return tokens
+
+    @staticmethod
+    def _is_emoji(ch: str) -> bool:
+        """Rough check: is this character a pictographic emoji?"""
+        code = ord(ch)
+        return (
+            0x1F300 <= code <= 0x1FAFF  # symbols, pictographs, emoticons, supplemental
+            or 0x2600 <= code <= 0x27BF  # misc symbols & dingbats
+            or code == 0x2764            # heavy black heart ❤
+        )
 
     # ---------------------------------------------------------------------
     # Scoring logic
@@ -75,15 +127,34 @@ class MoodAnalyzer:
           - Give some words higher weights than others (for example "hate" < "annoyed")
           - Treat emojis or slang (":)", "lol", "💀") as strong signals
         """
-        # TODO: Implement this method.
-        #   1. Call self.preprocess(text) to get tokens.
-        #   2. Loop over the tokens.
-        #   3. Increase the score for positive words, decrease for negative words.
-        #   4. Return the total score.
-        #
-        # Hint: if you implement negation, you may want to look at pairs of tokens,
-        # like ("not", "happy") or ("never", "fun").
-        pass
+        tokens = self.preprocess(text)
+        score = 0
+        negate = False  # set True right after a negation word like "not"
+
+        for token in tokens:
+            # A negation word flips the NEXT scoring token, then we move on.
+            if token in self.NEGATIONS:
+                negate = True
+                continue
+
+            # Decide this token's raw contribution: +1, -1, or 0.
+            value = 0
+            if token in self.positive_words or token in self.POSITIVE_EMOTICONS \
+                    or token in self.POSITIVE_EMOJI:
+                value = 1
+            elif token in self.negative_words or token in self.NEGATIVE_EMOTICONS \
+                    or token in self.NEGATIVE_EMOJI:
+                value = -1
+
+            if value != 0:
+                if negate:
+                    value = -value  # "not happy" -> -1, "not bad" -> +1
+                score += value
+
+            # Negation only reaches across one token, so always reset it here.
+            negate = False
+
+        return score
 
     # ---------------------------------------------------------------------
     # Label prediction
@@ -105,12 +176,13 @@ class MoodAnalyzer:
         Just remember that whatever labels you return should match the labels
         you use in TRUE_LABELS in dataset.py if you care about accuracy.
         """
-        # TODO: Implement this method.
-        #   1. Call self.score_text(text) to get the numeric score.
-        #   2. Return "positive" if the score is above 0.
-        #   3. Return "negative" if the score is below 0.
-        #   4. Return "neutral" otherwise.
-        pass
+        score = self.score_text(text)
+
+        if score > 0:
+            return "positive"
+        if score < 0:
+            return "negative"
+        return "neutral"
 
     # ---------------------------------------------------------------------
     # Explanations (optional but recommended)
@@ -137,14 +209,33 @@ class MoodAnalyzer:
         positive_hits: List[str] = []
         negative_hits: List[str] = []
         score = 0
+        negate = False
 
+        # Mirror score_text so the explanation matches the actual prediction.
         for token in tokens:
-            if token in self.positive_words:
-                positive_hits.append(token)
-                score += 1
-            if token in self.negative_words:
-                negative_hits.append(token)
-                score -= 1
+            if token in self.NEGATIONS:
+                negate = True
+                continue
+
+            value = 0
+            if token in self.positive_words or token in self.POSITIVE_EMOTICONS \
+                    or token in self.POSITIVE_EMOJI:
+                value = 1
+            elif token in self.negative_words or token in self.NEGATIVE_EMOTICONS \
+                    or token in self.NEGATIVE_EMOJI:
+                value = -1
+
+            if value != 0:
+                if negate:
+                    value = -value
+                    token = f"not+{token}"  # show that negation flipped it
+                score += value
+                if value > 0:
+                    positive_hits.append(token)
+                else:
+                    negative_hits.append(token)
+
+            negate = False
 
         return (
             f"Score = {score} "
